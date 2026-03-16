@@ -24,6 +24,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://erp_user:erp_password@db:5432/hearing_erp
       APP_ENV: development
+      JWT_SECRET_KEY: change-me-in-production
+      ACCESS_TOKEN_EXPIRE_MINUTES: 480
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     depends_on:
       db:
