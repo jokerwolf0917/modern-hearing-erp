@@ -1,0 +1,14 @@
+*.db
+*.sqlite3
+.env
+.env.local
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+dist/
+.pytest_cache/
+.mypy_cache/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

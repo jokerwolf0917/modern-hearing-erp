@@ -1,0 +1,191 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #1e293b;
+  background-color: #f5f7fa;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.72;
+  font-weight: 400;
+  font-size: 14px;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #f5f7fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 42, 0.12) transparent;
+}
+
+body::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+body::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+}
+
+body::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.ant-typography h1,
+.ant-typography h2,
+.ant-typography h3,
+.ant-typography h4,
+.ant-typography h5 {
+  letter-spacing: 0.01em;
+}
+
+.ant-typography,
+.ant-form,
+.ant-table,
+.ant-descriptions,
+.ant-menu {
+  color: #1e293b;
+}
+
+.ant-typography p,
+.ant-typography div,
+.ant-typography span,
+.ant-form-item-label > label,
+.ant-descriptions-item-content,
+.ant-descriptions-item-label {
+  line-height: 1.76;
+}
+
+.ant-typography h1,
+.ant-page-header-heading-title,
+.page-title {
+  font-size: 28px !important;
+  line-height: 1.28 !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+}
+
+.ant-card-head-title,
+.ant-typography h2,
+.ant-typography h3 {
+  font-size: 19px !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
+}
+
+.ant-card-head {
+  min-height: 60px;
+}
+
+.ant-typography.ant-typography-secondary,
+.ant-form-item-extra,
+.ant-empty-description,
+.ant-upload-hint {
+  color: #64748b !important;
+  font-size: 13px !important;
+}
+
+.ant-card {
+  border: 1px solid transparent;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 32px rgba(15, 23, 42, 0.05);
+  border-radius: 24px !important;
+}
+
+.ant-tag {
+  border-radius: 999px;
+  padding-inline: 10px;
+  line-height: 24px;
+  font-weight: 500;
+}
+
+.ant-menu-item,
+.ant-menu-submenu-title {
+  height: 42px !important;
+  line-height: 42px !important;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  transition: background-color 0.22s ease, transform 0.22s ease;
+  border-inline-end: none !important;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: #f8fafc !important;
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th {
+  border-inline-end: none !important;
+}
+
+.ant-btn {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.ant-btn:not(.ant-btn-link):hover {
+  transform: translateY(-1px) scale(1.01);
+}
+
+.ant-form-item {
+  margin-bottom: 22px;
+}
+
+.ant-layout-header {
+  border-bottom: none;
+}
+
+.ant-table-wrapper .ant-table {
+  background: transparent;
+}
+
+.ant-table-wrapper .ant-table-cell {
+  vertical-align: middle;
+}
+
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.page-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.page-hero-meta {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+@media (min-width: 1280px) {
+  .page-stack {
+    gap: 28px;
+  }
+}
