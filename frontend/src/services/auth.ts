@@ -3,7 +3,7 @@ import { request } from '../utils/request';
 export interface IEmployee {
   id: string;
   username: string;
-  role: 'admin' | 'store_manager' | 'staff';
+  role: 'ADMIN' | 'STORE_MANAGER' | 'STAFF';
   store_id: string | null;
   is_active: boolean;
 }

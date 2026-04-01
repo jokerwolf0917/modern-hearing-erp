@@ -1,13 +1,11 @@
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Form, Input, Modal, Radio, Space, Table, Tag, Typography, message } from 'antd';
+import { Button, Card, Form, Input, Modal, Radio, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useState } from 'react';
 
 import { createStore, getStores, type CreateStorePayload, type IStore } from '../services/store';
-
-const { Paragraph, Title } = Typography;
 
 interface StoreFormValues {
   name: string;
@@ -16,51 +14,51 @@ interface StoreFormValues {
   store_type: 'street' | 'hospital';
 }
 
+function getCopy(isZh: boolean) {
+  return {
+    store: isZh ? '门店' : 'Store',
+    searchPlaceholder: isZh ? '输入门店名称、地址或电话搜索' : 'Search by store name, address, or phone',
+    search: isZh ? '搜索' : 'Search',
+    reset: isZh ? '重置' : 'Reset',
+    newStore: isZh ? '新建门店' : 'New Store',
+    createSuccess: isZh ? '门店创建成功' : 'Store created successfully',
+    storeName: isZh ? '门店名称' : 'Store Name',
+    storeType: isZh ? '门店类型' : 'Store Type',
+    address: isZh ? '地址' : 'Address',
+    phone: isZh ? '电话' : 'Phone',
+    createdAt: isZh ? '创建时间' : 'Created At',
+    total: (count: number) => (isZh ? `共 ${count} 家门店` : `${count} stores`),
+    saveStore: isZh ? '保存门店' : 'Save Store',
+    cancel: isZh ? '取消' : 'Cancel',
+    inputStoreName: isZh ? '请输入门店名称' : 'Enter store name',
+    inputAddress: isZh ? '请输入门店地址' : 'Enter store address',
+    inputPhone: isZh ? '请输入门店电话' : 'Enter store phone',
+    hospital: isZh ? '医院店' : 'Hospital',
+    street: isZh ? '街边店' : 'Street',
+  };
+}
+
+function formatDateTime(value: string, locale: string): string {
+  return new Date(value).toLocaleString(locale, { hour12: false });
+}
+
+function getStoreTypeMeta(value: IStore['store_type'], isZh: boolean): { label: string; color: string } {
+  return value === 'hospital'
+    ? { label: isZh ? '医院店' : 'Hospital', color: 'blue' }
+    : { label: isZh ? '街边店' : 'Street', color: 'green' };
+}
+
 export function StorePage(): JSX.Element {
   const [messageApi, contextHolder] = message.useMessage();
   const [form] = Form.useForm<StoreFormValues>();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [keyword, setKeyword] = useState('');
   const queryClient = useQueryClient();
   const { i18n } = useTranslation();
   const isZh = i18n.language.startsWith('zh');
-  const locale = isZh ? 'zh-CN' : 'en-US';
-
-  const copy = {
-    createSuccess: isZh ? '门店创建成功' : 'Store created successfully.',
-    title: isZh ? '门店管理' : 'Store Management',
-    description: isZh
-      ? '维护门店主数据，为库存、调拨、收银等模块提供统一的真实门店来源。'
-      : 'Maintain live store master data used by inventory, transfers and checkout.',
-    create: isZh ? '新建门店' : 'New Store',
-    total: isZh ? '共 {{count}} 家门店' : '{{count}} stores',
-    modalTitle: isZh ? '新建门店' : 'Create Store',
-    save: isZh ? '保存门店' : 'Save Store',
-    cancel: isZh ? '取消' : 'Cancel',
-    name: isZh ? '名称' : 'Name',
-    address: isZh ? '地址' : 'Address',
-    phone: isZh ? '电话' : 'Phone',
-    type: isZh ? '类型' : 'Type',
-    createdAt: isZh ? '创建时间' : 'Created At',
-    nameRequired: isZh ? '请输入门店名称' : 'Please enter store name.',
-    addressRequired: isZh ? '请输入门店地址' : 'Please enter store address.',
-    phoneRequired: isZh ? '请输入门店电话' : 'Please enter store phone.',
-    namePlaceholder: isZh ? '请输入门店名称' : 'Enter store name',
-    addressPlaceholder: isZh ? '请输入门店地址' : 'Enter store address',
-    phonePlaceholder: isZh ? '请输入门店电话' : 'Enter store phone',
-    storeType: isZh ? '门店类型' : 'Store Type',
-    hospital: isZh ? '医院店' : 'Hospital',
-    street: isZh ? '街边店' : 'Street',
-  };
-
-  function formatDateTime(value: string): string {
-    return new Date(value).toLocaleString(locale, { hour12: false });
-  }
-
-  function getStoreTypeMeta(value: IStore['store_type']): { label: string; color: string } {
-    return value === 'hospital'
-      ? { label: copy.hospital, color: 'blue' }
-      : { label: copy.street, color: 'green' };
-  }
+  const copy = getCopy(isZh);
+  const dateLocale = isZh ? 'zh-CN' : 'en-AU';
 
   const storeQuery = useQuery({
     queryKey: ['stores'],
@@ -77,19 +75,36 @@ export function StorePage(): JSX.Element {
     },
   });
 
+  const stores = storeQuery.data ?? [];
+
+  const filteredStores = useMemo(() => {
+    const normalized = keyword.trim().toLowerCase();
+    if (!normalized) {
+      return stores;
+    }
+
+    return stores.filter((item) => {
+      const typeLabel = item.store_type === 'hospital' ? copy.hospital : copy.street;
+      return [item.name, item.address ?? '', item.phone ?? '', item.store_type, typeLabel]
+        .join(' ')
+        .toLowerCase()
+        .includes(normalized);
+    });
+  }, [copy.hospital, copy.street, keyword, stores]);
+
   const columns: ColumnsType<IStore> = [
     {
-      title: copy.name,
+      title: copy.storeName,
       dataIndex: 'name',
       key: 'name',
     },
     {
-      title: copy.type,
+      title: copy.storeType,
       dataIndex: 'store_type',
       key: 'store_type',
-      width: 120,
+      width: 140,
       render: (value: IStore['store_type']) => {
-        const meta = getStoreTypeMeta(value);
+        const meta = getStoreTypeMeta(value, isZh);
         return <Tag color={meta.color}>{meta.label}</Tag>;
       },
     },
@@ -111,7 +126,7 @@ export function StorePage(): JSX.Element {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (value: string) => formatDateTime(value),
+      render: (value: string) => formatDateTime(value, dateLocale),
     },
   ];
 
@@ -130,58 +145,69 @@ export function StorePage(): JSX.Element {
 
       <Card className="rounded-2xl shadow-sm">
         <Space direction="vertical" size="large" className="w-full">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <Title level={3} className="!mb-2">
-                {copy.title}
-              </Title>
-              <Paragraph type="secondary" className="!mb-0">
-                {copy.description}
-              </Paragraph>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+              <Input
+                allowClear
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                onPressEnter={() => setKeyword(searchInput.trim())}
+                prefix={<SearchOutlined />}
+                placeholder={copy.searchPlaceholder}
+                style={{ width: 360, maxWidth: '100%' }}
+              />
+              <Button onClick={() => setKeyword(searchInput.trim())}>{copy.search}</Button>
+              <Button
+                onClick={() => {
+                  setSearchInput('');
+                  setKeyword('');
+                }}
+              >
+                {copy.reset}
+              </Button>
             </div>
 
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)}>
-              {copy.create}
+              {copy.newStore}
             </Button>
           </div>
 
           <Table<IStore>
             rowKey="id"
             columns={columns}
-            dataSource={storeQuery.data ?? []}
+            dataSource={filteredStores}
             loading={storeQuery.isLoading || storeQuery.isFetching}
-            pagination={{ pageSize: 10, showTotal: (total) => copy.total.replace('{{count}}', String(total)) }}
+            pagination={{ pageSize: 10, showTotal: (total) => copy.total(total) }}
             scroll={{ x: 960 }}
           />
         </Space>
       </Card>
 
       <Modal
-        title={copy.modalTitle}
+        title={copy.newStore}
         open={isModalOpen}
         onCancel={() => {
-          if (createMutation.isPending) {
-            return;
+          if (!createMutation.isPending) {
+            setIsModalOpen(false);
           }
-          setIsModalOpen(false);
         }}
         onOk={() => void handleCreate()}
         confirmLoading={createMutation.isPending}
-        okText={copy.save}
+        okText={copy.saveStore}
         cancelText={copy.cancel}
         destroyOnHidden
       >
         <Form<StoreFormValues> form={form} layout="vertical" initialValues={{ store_type: 'street' }}>
-          <Form.Item label={copy.name} name="name" rules={[{ required: true, message: copy.nameRequired }]}>
-            <Input placeholder={copy.namePlaceholder} maxLength={120} />
+          <Form.Item label={copy.storeName} name="name" rules={[{ required: true, message: copy.inputStoreName }]}>
+            <Input placeholder={copy.inputStoreName} maxLength={120} />
           </Form.Item>
 
-          <Form.Item label={copy.address} name="address" rules={[{ required: true, message: copy.addressRequired }]}>
-            <Input placeholder={copy.addressPlaceholder} maxLength={255} />
+          <Form.Item label={copy.address} name="address" rules={[{ required: true, message: copy.inputAddress }]}>
+            <Input placeholder={copy.inputAddress} maxLength={255} />
           </Form.Item>
 
-          <Form.Item label={copy.phone} name="phone" rules={[{ required: true, message: copy.phoneRequired }]}>
-            <Input placeholder={copy.phonePlaceholder} maxLength={30} />
+          <Form.Item label={copy.phone} name="phone" rules={[{ required: true, message: copy.inputPhone }]}>
+            <Input placeholder={copy.inputPhone} maxLength={30} />
           </Form.Item>
 
           <Form.Item label={copy.storeType} name="store_type">

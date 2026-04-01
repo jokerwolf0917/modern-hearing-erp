@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import ALGORITHM, SECRET_KEY
 from app.database import get_db
-from app.models import Employee
+from app.models import Employee, EmployeeRole
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -43,3 +43,20 @@ async def get_current_active_user(
         )
 
     return employee
+
+
+async def get_current_employee(
+    current_employee: Employee = Depends(get_current_active_user),
+) -> Employee:
+    return current_employee
+
+
+def require_admin(
+    current_employee: Employee = Depends(get_current_employee),
+) -> Employee:
+    if current_employee.role != EmployeeRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden",
+        )
+    return current_employee

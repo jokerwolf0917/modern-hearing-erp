@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -6,37 +8,39 @@ from pydantic import BaseModel, Field
 
 
 class ProductCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=150)
-    sku: str = Field(min_length=1, max_length=64)
-    category: str = Field(min_length=1, max_length=80)
-    cost_price: Decimal = Field(ge=0)
-    retail_price: Decimal = Field(gt=0)
-    brand: str = Field(min_length=1, max_length=80)
-    manufacturer: str = Field(min_length=1, max_length=120)
-    registration_no: str = Field(min_length=1, max_length=120)
-    has_sn_tracking: bool = False
+    product_code: str = Field(min_length=1, max_length=64)
+    category: str = Field(min_length=1, max_length=64)
+    brand: str = Field(min_length=1, max_length=64)
+    name_cn: str = Field(min_length=1, max_length=150)
+    name_en: str | None = Field(default=None, max_length=150)
+    specification: str | None = Field(default=None, max_length=255)
+    matrix: str | None = Field(default=None, max_length=120)
+    original_price: Decimal = Field(ge=0)
+    unit: str | None = Field(default=None, max_length=30)
+    remark: str | None = None
 
 
-class ProductUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=150)
-    sku: str = Field(min_length=1, max_length=64)
-    category: str = Field(min_length=1, max_length=80)
-    cost_price: Decimal = Field(ge=0)
-    retail_price: Decimal = Field(gt=0)
-    brand: str = Field(min_length=1, max_length=80)
-    manufacturer: str = Field(min_length=1, max_length=120)
-    registration_no: str = Field(min_length=1, max_length=120)
-    has_sn_tracking: bool = False
+class ProductUpdate(ProductCreate):
+    pass
 
 
 class ProductRead(BaseModel):
     id: uuid.UUID
-    name: str
-    sku: str
+    product_code: str
     category: str
-    cost_price: Decimal
-    retail_price: Decimal
-    brand: str | None
-    manufacturer: str | None
-    registration_no: str | None
-    has_sn_tracking: bool
+    category_display: str
+    brand: str
+    brand_display: str
+    name_cn: str
+    name_en: str | None
+    specification: str | None
+    matrix: str | None
+    original_price: Decimal
+    unit: str | None
+    remark: str | None
+    created_at: datetime
+
+
+class ProductImportResult(BaseModel):
+    imported_count: int
+    skipped_count: int

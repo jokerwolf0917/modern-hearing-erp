@@ -21,6 +21,7 @@ export interface IAppointment {
 export interface GetAppointmentsParams {
   startTime?: string;
   endTime?: string;
+  storeId?: string;
 }
 
 export interface CreateAppointmentPayload {
@@ -36,6 +37,7 @@ export async function getAppointments(params: GetAppointmentsParams = {}): Promi
     params: {
       start_time: params.startTime,
       end_time: params.endTime,
+      store_id: params.storeId,
     },
   });
   return response.data;

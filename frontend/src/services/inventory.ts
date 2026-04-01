@@ -1,9 +1,11 @@
-﻿import { request } from '../utils/request';
+import { request } from '../utils/request';
 
 export interface StockInPayload {
   store_id: string;
   product_id: string;
   quantity: number;
+  transaction_date?: string;
+  remark?: string;
 }
 
 export interface TransferStockPayload {
@@ -11,12 +13,8 @@ export interface TransferStockPayload {
   to_store_id: string;
   product_id: string;
   quantity: number;
-}
-
-export interface SerialStockInPayload {
-  store_id: string;
-  product_id: string;
-  sn_codes: string[];
+  transaction_date?: string;
+  remark?: string;
 }
 
 export interface StockInResponse {
@@ -38,23 +36,22 @@ export interface TransferStockResponse {
   ledger_id: string;
 }
 
-export interface SerialStockInResponse {
-  store_id: string;
-  product_id: string;
-  created_count: number;
-  quantity: number;
-  ledger_id: string;
-}
-
 export interface StockSummaryItem {
   inventory_id: string;
   store_id: string;
   store_name: string;
   product_id: string;
-  product_name: string;
-  sku: string;
-  retail_price: number | string;
+  product_code: string;
+  category: string;
+  category_display: string;
+  brand: string;
+  brand_display: string;
+  name_cn: string;
+  name_en: string | null;
+  specification: string | null;
+  original_price: number | string;
   quantity: number;
+  unit: string | null;
 }
 
 export interface InventoryLedgerRow {
@@ -62,12 +59,23 @@ export interface InventoryLedgerRow {
   store_id: string;
   store_name: string;
   product_id: string;
-  product_name: string;
-  sku: string;
-  quantity: number;
-  cost_price: number | string;
-  retail_price: number | string;
-  has_sn_tracking: boolean;
+  product_code: string;
+  category: string;
+  category_display: string;
+  brand: string;
+  brand_display: string;
+  name_cn: string;
+  name_en: string | null;
+  specification: string | null;
+  original_price: number | string;
+  last_month_stock: number;
+  in_this_month: number;
+  out_this_month: number;
+  sales_this_month: number;
+  expected_stock: number;
+  actual_stock: number;
+  unit: string | null;
+  remark: string | null;
 }
 
 export interface LedgerHistoryItem {
@@ -76,8 +84,8 @@ export interface LedgerHistoryItem {
   store_id: string;
   store_name: string;
   product_id: string;
+  product_code: string;
   product_name: string;
-  sku: string;
   reference_type: string;
   change_amount: number;
   quantity_before: number;
@@ -91,24 +99,6 @@ export interface DashboardMetrics {
   low_stock_warning_count: number;
 }
 
-export interface AvailableSerialItem {
-  id: string;
-  sn_code: string;
-}
-
-export interface SNTraceResult {
-  sn_code: string;
-  status: 'in_stock' | 'sold' | 'returned' | 'defective';
-  product_name: string;
-  store_name: string;
-  customer_name: string | null;
-  order_id: string | null;
-  stocked_in_at: string;
-  sold_at: string | null;
-  warranty_ends_at: string | null;
-  is_warranty_valid: boolean;
-}
-
 export async function stockIn(data: StockInPayload): Promise<StockInResponse> {
   const response = await request.post<StockInResponse>('/api/inventory/stock-in', data);
   return response.data;
@@ -117,23 +107,6 @@ export async function stockIn(data: StockInPayload): Promise<StockInResponse> {
 export async function transferStock(data: TransferStockPayload): Promise<TransferStockResponse> {
   const response = await request.post<TransferStockResponse>('/api/inventory/transfer', data);
   return response.data;
-}
-
-export async function serialStockIn(data: SerialStockInPayload): Promise<SerialStockInResponse> {
-  const response = await request.post<SerialStockInResponse>('/api/inventory/sn-stock-in', data);
-  return response.data;
-}
-
-export async function snStockIn(
-  storeId: string,
-  productId: string,
-  snCodes: string[],
-): Promise<SerialStockInResponse> {
-  return serialStockIn({
-    store_id: storeId,
-    product_id: productId,
-    sn_codes: snCodes,
-  });
 }
 
 export async function getStockSummary(): Promise<StockSummaryItem[]> {
@@ -161,20 +134,5 @@ export async function getLedgerHistory(): Promise<LedgerHistoryItem[]> {
 
 export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const response = await request.get<DashboardMetrics>('/api/inventory/dashboard-metrics');
-  return response.data;
-}
-
-export async function getAvailableSNs(storeId: string, productId: string): Promise<AvailableSerialItem[]> {
-  const response = await request.get<AvailableSerialItem[]>('/api/inventory/available-sns', {
-    params: {
-      store_id: storeId,
-      product_id: productId,
-    },
-  });
-  return response.data;
-}
-
-export async function traceSN(snCode: string): Promise<SNTraceResult> {
-  const response = await request.get<SNTraceResult>(`/api/inventory/trace-sn/${encodeURIComponent(snCode)}`);
   return response.data;
 }

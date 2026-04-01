@@ -2,20 +2,19 @@ import { Navigate, createBrowserRouter } from 'react-router-dom';
 
 import { useAuth } from '../contexts/AuthContext';
 import { MainLayout } from '../layouts/MainLayout';
-import { AIAssistant } from '../pages/AIAssistant';
 import { CalendarPage } from '../pages/CalendarPage';
 import { CustomerPage } from '../pages/CustomerPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { EmployeePage } from '../pages/EmployeePage';
+import { HelpPage } from '../pages/HelpPage';
 import { InventoryListPage } from '../pages/InventoryListPage';
 import { LoginPage } from '../pages/LoginPage';
 import { OrderListPage } from '../pages/OrderListPage';
 import { ProductPage } from '../pages/ProductPage';
+import { RepairDashboard } from '../pages/RepairDashboard';
 import { SalesPage } from '../pages/SalesPage';
-import { SNStockInPage } from '../pages/SNStockInPage';
-import { SNTracePage } from '../pages/SNTracePage';
+import { SettingsPage } from '../pages/SettingsPage';
 import { StorePage } from '../pages/StorePage';
-import { TransferPage } from '../pages/TransferPage';
 
 function RequireAuth({ children }: { children: JSX.Element }): JSX.Element {
   const { isAuthenticated } = useAuth();
@@ -24,7 +23,7 @@ function RequireAuth({ children }: { children: JSX.Element }): JSX.Element {
 
 function RequireAdmin({ children }: { children: JSX.Element }): JSX.Element {
   const { employee } = useAuth();
-  return employee?.role === 'admin' ? children : <Navigate to="/dashboard" replace />;
+  return employee?.role === 'ADMIN' ? children : <Navigate to="/dashboard" replace />;
 }
 
 export const router = createBrowserRouter([
@@ -53,22 +52,42 @@ export const router = createBrowserRouter([
         element: <CustomerPage />,
       },
       {
+        path: 'repairs',
+        element: <RepairDashboard />,
+      },
+      {
         path: 'calendar',
         element: <CalendarPage />,
       },
       {
-        path: 'stores',
-        element: (
-          <RequireAdmin>
-            <StorePage />
-          </RequireAdmin>
-        ),
+        path: 'sales',
+        element: <SalesPage />,
+      },
+      {
+        path: 'orders',
+        element: <OrderListPage />,
+      },
+      {
+        path: 'inventory',
+        element: <InventoryListPage />,
+      },
+      {
+        path: 'transfer',
+        element: <Navigate to="/inventory" replace />,
       },
       {
         path: 'products',
         element: (
           <RequireAdmin>
             <ProductPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'stores',
+        element: (
+          <RequireAdmin>
+            <StorePage />
           </RequireAdmin>
         ),
       },
@@ -81,32 +100,12 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'inventory-ledger',
-        element: <InventoryListPage />,
+        path: 'settings',
+        element: <SettingsPage />,
       },
       {
-        path: 'sales',
-        element: <SalesPage />,
-      },
-      {
-        path: 'orders',
-        element: <OrderListPage />,
-      },
-      {
-        path: 'transfer',
-        element: <TransferPage />,
-      },
-      {
-        path: 'sn-stock-in',
-        element: <SNStockInPage />,
-      },
-      {
-        path: 'sn-trace',
-        element: <SNTracePage />,
-      },
-      {
-        path: 'ai-assistant',
-        element: <AIAssistant />,
+        path: 'help',
+        element: <HelpPage />,
       },
     ],
   },

@@ -1,3 +1,1 @@
-﻿from app.schemas.ai_schemas import AudiogramData
-
-__all__ = ["AudiogramData"]
+__all__: list[str] = []

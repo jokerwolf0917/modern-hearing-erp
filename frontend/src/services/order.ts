@@ -28,7 +28,7 @@ export interface IOrder {
   customer_id: string;
   store_id: string;
   total_amount: number | string;
-  status: 'paid' | 'returned' | 'cancelled';
+  status: 'PAID' | 'RETURNED' | 'CANCELLED';
   created_at: string;
   items: IOrderItem[];
 }
@@ -50,13 +50,14 @@ export interface IOrderListItem {
   store_id: string;
   store_name: string;
   total_amount: number | string;
-  status: 'paid' | 'returned' | 'cancelled';
+  status: 'PAID' | 'RETURNED' | 'CANCELLED';
   created_at: string;
 }
 
 export interface GetOrdersParams {
   customerName?: string;
   orderId?: string;
+  storeId?: string;
 }
 
 export async function createOrder(payload: CreateOrderPayload): Promise<IOrder> {
@@ -69,6 +70,7 @@ export async function getOrders(params: GetOrdersParams = {}): Promise<IOrderLis
     params: {
       customer_name: params.customerName?.trim() || undefined,
       order_id_prefix: params.orderId?.trim() || undefined,
+      store_id: params.storeId || undefined,
     },
   });
   return response.data;

@@ -2,47 +2,54 @@ import { request } from '../utils/request';
 
 export interface IProduct {
   id: string;
-  name: string;
-  sku: string;
+  product_code: string;
   category: string;
-  cost_price: number | string;
-  retail_price: number | string;
-  brand: string | null;
-  manufacturer: string | null;
-  registration_no: string | null;
-  has_sn_tracking: boolean;
-}
-
-export interface CreateProductPayload {
-  name: string;
-  sku: string;
-  category: string;
-  cost_price: number;
-  retail_price: number;
+  category_display: string;
   brand: string;
-  manufacturer: string;
-  registration_no: string;
-  has_sn_tracking: boolean;
+  brand_display: string;
+  name_cn: string;
+  name_en: string | null;
+  specification: string | null;
+  matrix: string | null;
+  original_price: number | string;
+  unit: string | null;
+  remark: string | null;
+  created_at: string;
 }
 
-export interface UpdateProductPayload extends CreateProductPayload {}
+export interface ProductPayload {
+  product_code: string;
+  category: string;
+  brand: string;
+  name_cn: string;
+  name_en?: string | null;
+  specification?: string | null;
+  matrix?: string | null;
+  original_price: number;
+  unit?: string | null;
+  remark?: string | null;
+}
 
 export interface ImportResult {
   imported_count: number;
   skipped_count: number;
 }
 
-export async function getProducts(): Promise<IProduct[]> {
-  const response = await request.get<IProduct[]>('/api/products');
+export async function getProducts(storeId?: string): Promise<IProduct[]> {
+  const response = await request.get<IProduct[]>('/api/products', {
+    params: {
+      store_id: storeId || undefined,
+    },
+  });
   return response.data;
 }
 
-export async function createProduct(payload: CreateProductPayload): Promise<IProduct> {
+export async function createProduct(payload: ProductPayload): Promise<IProduct> {
   const response = await request.post<IProduct>('/api/products', payload);
   return response.data;
 }
 
-export async function updateProduct(productId: string, payload: UpdateProductPayload): Promise<IProduct> {
+export async function updateProduct(productId: string, payload: ProductPayload): Promise<IProduct> {
   const response = await request.put<IProduct>(`/api/products/${productId}`, payload);
   return response.data;
 }
@@ -55,6 +62,13 @@ export async function importProducts(file: File): Promise<ImportResult> {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
+  });
+  return response.data;
+}
+
+export async function exportProducts(): Promise<Blob> {
+  const response = await request.get<Blob>('/api/products/export', {
+    responseType: 'blob',
   });
   return response.data;
 }

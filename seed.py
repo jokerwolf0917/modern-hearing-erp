@@ -1,610 +1,987 @@
-import argparse
-import asyncio
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from __future__ import annotations
 
-from sqlalchemy import delete, select, update
+import asyncio
+from collections.abc import Iterable
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.catalog import brand_display, category_display
+from app.core.security import get_password_hash
 from app.database import AsyncSessionLocal, Base, engine
 from app.models import (
     Appointment,
-    Audiogram,
+    AppointmentStatus,
+    BrandEnum,
+    CategoryEnum,
     Customer,
     Employee,
     EmployeeRole,
+    FittingRecord,
     Inventory,
     InventoryLedger,
+    InventorySummary,
     Order,
     OrderItem,
     OrderStatus,
     Product,
-    ProductSerial,
-    ProductSerialStatus,
+    RepairRecord,
+    RepairStatus,
+    StockTransaction,
     Store,
     StoreType,
-    Transfer,
-    User,
+    TransactionType,
 )
 
 
-def days_ago(days: int, hour: int, minute: int = 0) -> datetime:
-    now = datetime.now(timezone.utc)
-    target = now - timedelta(days=days)
-    return target.replace(hour=hour, minute=minute, second=0, microsecond=0)
+BUSINESS_TZ = ZoneInfo("Australia/Sydney")
+UTC = ZoneInfo("UTC")
+MONTH_KEY = datetime.now(BUSINESS_TZ).strftime("%Y-%m")
 
 
-async def get_store(session: AsyncSession, name: str) -> Store | None:
-    return await session.scalar(select(Store).where(Store.name == name))
+STORE_SEED = [
+    {
+        "name": "Sydney Flagship Store",
+        "address": "201 George Street, Sydney NSW",
+        "phone": "0290101001",
+        "store_type": StoreType.STREET,
+    },
+    {
+        "name": "Melbourne Branch",
+        "address": "188 Collins Street, Melbourne VIC",
+        "phone": "0390202002",
+        "store_type": StoreType.STREET,
+    },
+    {
+        "name": "People's Hospital Hearing Center",
+        "address": "55 Health Avenue, Parramatta NSW",
+        "phone": "0288803003",
+        "store_type": StoreType.HOSPITAL,
+    },
+    {
+        "name": "West Lakes Experience Store",
+        "address": "9 Lake Road, Adelaide SA",
+        "phone": "0888104004",
+        "store_type": StoreType.STREET,
+    },
+]
 
 
-async def get_customer(session: AsyncSession, name: str, phone: str) -> Customer | None:
-    return await session.scalar(
-        select(Customer).where(Customer.name == name, Customer.phone == phone),
-    )
+EMPLOYEE_SEED = [
+    {"username": "admin", "role": EmployeeRole.ADMIN, "store_name": None},
+    {"username": "sydney_manager", "role": EmployeeRole.STORE_MANAGER, "store_name": "Sydney Flagship Store"},
+    {"username": "sydney_staff", "role": EmployeeRole.STAFF, "store_name": "Sydney Flagship Store"},
+    {"username": "melbourne_manager", "role": EmployeeRole.STORE_MANAGER, "store_name": "Melbourne Branch"},
+    {"username": "melbourne_staff", "role": EmployeeRole.STAFF, "store_name": "Melbourne Branch"},
+    {"username": "hospital_manager", "role": EmployeeRole.STORE_MANAGER, "store_name": "People's Hospital Hearing Center"},
+    {"username": "hospital_staff", "role": EmployeeRole.STAFF, "store_name": "People's Hospital Hearing Center"},
+    {"username": "adl_staff", "role": EmployeeRole.STAFF, "store_name": "West Lakes Experience Store"},
+]
 
 
-async def get_product(session: AsyncSession, sku: str) -> Product | None:
-    return await session.scalar(select(Product).where(Product.sku == sku))
+PRODUCT_SEED = [
+    {
+        "product_code": "SIG-RIC-001",
+        "brand": BrandEnum.SIGNIA,
+        "category": CategoryEnum.RIC,
+        "name_cn": "西嘉 Styletto AX",
+        "name_en": "Signia Styletto AX",
+        "specification": "Rechargeable / Pair",
+        "matrix": "7AX",
+        "original_price": Decimal("9800.00"),
+        "cost_price": Decimal("5200.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": "AU-SIG-RIC-001",
+        "unit": "套",
+        "remark": "高端充电RIC",
+    },
+    {
+        "product_code": "SIG-CIC-002",
+        "brand": BrandEnum.SIGNIA,
+        "category": CategoryEnum.CIC,
+        "name_cn": "西嘉 Silk Charge&Go",
+        "name_en": "Signia Silk Charge&Go",
+        "specification": "CIC / Pair",
+        "matrix": "5IX",
+        "original_price": Decimal("7600.00"),
+        "cost_price": Decimal("3900.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": "AU-SIG-CIC-002",
+        "unit": "套",
+        "remark": "即配型隐形机",
+    },
+    {
+        "product_code": "PHO-BTE-003",
+        "brand": BrandEnum.PHONAK,
+        "category": CategoryEnum.BTE,
+        "name_cn": "峰力 Naida Paradise",
+        "name_en": "Phonak Naida Paradise",
+        "specification": "BTE / Pair",
+        "matrix": "P90",
+        "original_price": Decimal("11200.00"),
+        "cost_price": Decimal("6100.00"),
+        "manufacturer": "Sonova",
+        "registration_no": "AU-PHO-BTE-003",
+        "unit": "套",
+        "remark": "重度听损适配",
+    },
+    {
+        "product_code": "PHO-ITE-004",
+        "brand": BrandEnum.PHONAK,
+        "category": CategoryEnum.ITE,
+        "name_cn": "峰力 Virto Paradise",
+        "name_en": "Phonak Virto Paradise",
+        "specification": "ITE / Pair",
+        "matrix": "P70",
+        "original_price": Decimal("8700.00"),
+        "cost_price": Decimal("4600.00"),
+        "manufacturer": "Sonova",
+        "registration_no": "AU-PHO-ITE-004",
+        "unit": "套",
+        "remark": "定制耳内机",
+    },
+    {
+        "product_code": "PHI-RIC-005",
+        "brand": BrandEnum.PHILIPS,
+        "category": CategoryEnum.RIC,
+        "name_cn": "飞利浦 HearLink",
+        "name_en": "Philips HearLink",
+        "specification": "RIC / Pair",
+        "matrix": "9040",
+        "original_price": Decimal("8200.00"),
+        "cost_price": Decimal("4300.00"),
+        "manufacturer": "Demant",
+        "registration_no": "AU-PHI-RIC-005",
+        "unit": "套",
+        "remark": "门店热销款",
+    },
+    {
+        "product_code": "SIE-ITC-006",
+        "brand": BrandEnum.SIEMENS,
+        "category": CategoryEnum.ITC,
+        "name_cn": "西门子 Insio",
+        "name_en": "Siemens Insio",
+        "specification": "ITC / Pair",
+        "matrix": "3BX",
+        "original_price": Decimal("6800.00"),
+        "cost_price": Decimal("3500.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": "AU-SIE-ITC-006",
+        "unit": "套",
+        "remark": "经典耳道机",
+    },
+    {
+        "product_code": "SIG-IIC-007",
+        "brand": BrandEnum.SIGNIA,
+        "category": CategoryEnum.IIC,
+        "name_cn": "西嘉 Insio IX IIC",
+        "name_en": "Signia Insio IX IIC",
+        "specification": "IIC / Pair",
+        "matrix": "7IX",
+        "original_price": Decimal("12600.00"),
+        "cost_price": Decimal("6800.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": "AU-SIG-IIC-007",
+        "unit": "套",
+        "remark": "超隐形高端机",
+    },
+    {
+        "product_code": "PHO-IIC-008",
+        "brand": BrandEnum.PHONAK,
+        "category": CategoryEnum.IIC_CIC,
+        "name_cn": "峰力 Lyric",
+        "name_en": "Phonak Lyric",
+        "specification": "IIC/CIC / Pair",
+        "matrix": "Lyric 4",
+        "original_price": Decimal("9900.00"),
+        "cost_price": Decimal("5400.00"),
+        "manufacturer": "Sonova",
+        "registration_no": "AU-PHO-IIC-008",
+        "unit": "套",
+        "remark": "深耳道类展示机",
+    },
+    {
+        "product_code": "STD-SET-009",
+        "brand": BrandEnum.PHILIPS,
+        "category": CategoryEnum.STANDARD_MACHINE,
+        "name_cn": "飞利浦标准成品机",
+        "name_en": "Philips Standard Unit",
+        "specification": "Standard / Pair",
+        "matrix": "Entry",
+        "original_price": Decimal("5200.00"),
+        "cost_price": Decimal("2600.00"),
+        "manufacturer": "Demant",
+        "registration_no": "AU-PHI-STD-009",
+        "unit": "套",
+        "remark": "标准成品机",
+    },
+    {
+        "product_code": "BHM-SET-010",
+        "brand": BrandEnum.SIEMENS,
+        "category": CategoryEnum.BEHIND_EAR_MACHINE,
+        "name_cn": "西门子耳背机",
+        "name_en": "Siemens Behind-Ear",
+        "specification": "BTE / Pair",
+        "matrix": "Classic",
+        "original_price": Decimal("6100.00"),
+        "cost_price": Decimal("3000.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": "AU-SIE-BHM-010",
+        "unit": "套",
+        "remark": "中文业务分类机型",
+    },
+    {
+        "product_code": "CUS-SET-011",
+        "brand": BrandEnum.SIGNIA,
+        "category": CategoryEnum.CUSTOM_MACHINE,
+        "name_cn": "西嘉定制机",
+        "name_en": "Signia Custom Device",
+        "specification": "Custom / Pair",
+        "matrix": "Custom 5",
+        "original_price": Decimal("8800.00"),
+        "cost_price": Decimal("4700.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": "AU-SIG-CUS-011",
+        "unit": "套",
+        "remark": "按耳样定制",
+    },
+    {
+        "product_code": "REC-2-012",
+        "brand": BrandEnum.SIGNIA,
+        "category": CategoryEnum.RECEIVER_2,
+        "name_cn": "2.0受话器",
+        "name_en": "Receiver 2.0",
+        "specification": "M / 2.0",
+        "matrix": "2M",
+        "original_price": Decimal("580.00"),
+        "cost_price": Decimal("230.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": None,
+        "unit": "个",
+        "remark": "附件类",
+    },
+    {
+        "product_code": "REC-3-013",
+        "brand": BrandEnum.PHONAK,
+        "category": CategoryEnum.RECEIVER_3,
+        "name_cn": "3.0受话器",
+        "name_en": "Receiver 3.0",
+        "specification": "P / 3.0",
+        "matrix": "3P",
+        "original_price": Decimal("760.00"),
+        "cost_price": Decimal("320.00"),
+        "manufacturer": "Sonova",
+        "registration_no": None,
+        "unit": "个",
+        "remark": "高功率受话器",
+    },
+    {
+        "product_code": "CHR-014",
+        "brand": BrandEnum.SIGNIA,
+        "category": CategoryEnum.CHARGER,
+        "name_cn": "便携充电器",
+        "name_en": "Portable Charger",
+        "specification": "USB-C",
+        "matrix": "CHR-AX",
+        "original_price": Decimal("980.00"),
+        "cost_price": Decimal("410.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": None,
+        "unit": "个",
+        "remark": "配套充电器",
+    },
+    {
+        "product_code": "EAR-015",
+        "brand": BrandEnum.ZHILI,
+        "category": CategoryEnum.EAR_MOLD,
+        "name_cn": "定制耳模",
+        "name_en": "Custom Ear Mold",
+        "specification": "Silicone",
+        "matrix": "MOLD-S",
+        "original_price": Decimal("260.00"),
+        "cost_price": Decimal("90.00"),
+        "manufacturer": "Zhili Medical",
+        "registration_no": None,
+        "unit": "只",
+        "remark": "个性化附件",
+    },
+    {
+        "product_code": "ACC-016",
+        "brand": BrandEnum.PHILIPS,
+        "category": CategoryEnum.ACCESSORY,
+        "name_cn": "多功能清洁套装",
+        "name_en": "Cleaning Accessory Kit",
+        "specification": "Care Set",
+        "matrix": "KIT-01",
+        "original_price": Decimal("120.00"),
+        "cost_price": Decimal("45.00"),
+        "manufacturer": "Demant",
+        "registration_no": None,
+        "unit": "套",
+        "remark": "常规配件",
+    },
+    {
+        "product_code": "CARE-017",
+        "brand": BrandEnum.ZHILI,
+        "category": CategoryEnum.CARE_DEVICE,
+        "name_cn": "护理宝",
+        "name_en": "Care Device",
+        "specification": "Dry Box",
+        "matrix": "CARE-BOX",
+        "original_price": Decimal("390.00"),
+        "cost_price": Decimal("160.00"),
+        "manufacturer": "Zhili Medical",
+        "registration_no": None,
+        "unit": "台",
+        "remark": "干燥护理",
+    },
+    {
+        "product_code": "CROS-018",
+        "brand": BrandEnum.PHONAK,
+        "category": CategoryEnum.CROS,
+        "name_cn": "同声移系统",
+        "name_en": "CROS System",
+        "specification": "Pairing Kit",
+        "matrix": "CROS-P",
+        "original_price": Decimal("5400.00"),
+        "cost_price": Decimal("2900.00"),
+        "manufacturer": "Sonova",
+        "registration_no": "AU-PHO-CROS-018",
+        "unit": "套",
+        "remark": "单侧聋方案",
+    },
+    {
+        "product_code": "DEM-019",
+        "brand": BrandEnum.SIGNIA,
+        "category": CategoryEnum.DEMO_MACHINE,
+        "name_cn": "演示样机",
+        "name_en": "Demo Device",
+        "specification": "Display Unit",
+        "matrix": "DEMO-AX",
+        "original_price": Decimal("0.00"),
+        "cost_price": Decimal("0.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": None,
+        "unit": "台",
+        "remark": "门店展示",
+    },
+    {
+        "product_code": "BAT-020",
+        "brand": BrandEnum.POWERONE,
+        "category": CategoryEnum.BATTERY,
+        "name_cn": "PowerOne 电池 6粒装",
+        "name_en": "PowerOne Battery 6-pack",
+        "specification": "312 / 6-pack",
+        "matrix": "BAT-312",
+        "original_price": Decimal("28.00"),
+        "cost_price": Decimal("10.00"),
+        "manufacturer": "VARTA",
+        "registration_no": None,
+        "unit": "板",
+        "remark": "高频耗材",
+    },
+    {
+        "product_code": "BAT-021",
+        "brand": BrandEnum.ZHILI,
+        "category": CategoryEnum.BATTERY,
+        "name_cn": "至力电池 10粒装",
+        "name_en": "Zhili Battery 10-pack",
+        "specification": "13 / 10-pack",
+        "matrix": "BAT-13",
+        "original_price": Decimal("36.00"),
+        "cost_price": Decimal("12.00"),
+        "manufacturer": "Zhili Medical",
+        "registration_no": None,
+        "unit": "板",
+        "remark": "门店常备",
+    },
+    {
+        "product_code": "SIG-RIC-022",
+        "brand": BrandEnum.SIGNIA,
+        "category": CategoryEnum.RIC,
+        "name_cn": "西嘉 Pure Charge&Go",
+        "name_en": "Signia Pure Charge&Go",
+        "specification": "RIC / Pair",
+        "matrix": "3IX",
+        "original_price": Decimal("7200.00"),
+        "cost_price": Decimal("3600.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": "AU-SIG-RIC-022",
+        "unit": "套",
+        "remark": "主销RIC",
+    },
+    {
+        "product_code": "PHI-BTE-023",
+        "brand": BrandEnum.PHILIPS,
+        "category": CategoryEnum.BTE,
+        "name_cn": "飞利浦 BTE",
+        "name_en": "Philips BTE",
+        "specification": "BTE / Pair",
+        "matrix": "9030",
+        "original_price": Decimal("5600.00"),
+        "cost_price": Decimal("2800.00"),
+        "manufacturer": "Demant",
+        "registration_no": "AU-PHI-BTE-023",
+        "unit": "套",
+        "remark": "基础款耳背机",
+    },
+    {
+        "product_code": "SIE-CIC-024",
+        "brand": BrandEnum.SIEMENS,
+        "category": CategoryEnum.CIC,
+        "name_cn": "西门子 CIC",
+        "name_en": "Siemens CIC",
+        "specification": "CIC / Pair",
+        "matrix": "2NX",
+        "original_price": Decimal("6300.00"),
+        "cost_price": Decimal("3100.00"),
+        "manufacturer": "WS Audiology",
+        "registration_no": "AU-SIE-CIC-024",
+        "unit": "套",
+        "remark": "入门隐形机",
+    },
+]
 
 
-async def get_inventory(session: AsyncSession, store_id, product_id) -> Inventory | None:
-    return await session.scalar(
-        select(Inventory).where(
-            Inventory.store_id == store_id,
-            Inventory.product_id == product_id,
-        ),
-    )
+FIRST_NAMES = [
+    "Liam", "Noah", "Oliver", "Elijah", "James", "Lucas", "Mason", "Ethan", "Alexander", "Henry",
+    "Amelia", "Olivia", "Ava", "Charlotte", "Sophia", "Isabella", "Mia", "Harper", "Evelyn", "Ella",
+]
+
+LAST_NAMES = [
+    "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Wilson", "Taylor",
+    "Clark", "Walker", "Hall", "Young", "Allen", "King", "Wright", "Scott", "Green", "Baker",
+]
+
+GENDERS = ["男", "女"]
+HEARING_LOSS_TYPES = ["轻度", "中度", "中重度", "重度", None]
+APPOINTMENT_TYPES = ["初诊", "调音", "复查", "保养"]
 
 
-async def get_serial(session: AsyncSession, sn_code: str) -> ProductSerial | None:
-    return await session.scalar(select(ProductSerial).where(ProductSerial.sn_code == sn_code))
+def dt_in_tz(days_offset: int, hour: int, minute: int = 0) -> datetime:
+    base_date = datetime.now(BUSINESS_TZ).date() + timedelta(days=days_offset)
+    return datetime.combine(base_date, time(hour=hour, minute=minute), tzinfo=BUSINESS_TZ)
 
 
-async def ledger_exists(
-    session: AsyncSession,
-    *,
-    store_id,
-    product_id,
-    change_amount: int,
-    reference_type: str,
-    created_at: datetime,
-) -> bool:
-    existing = await session.scalar(
-        select(InventoryLedger.id).where(
-            InventoryLedger.store_id == store_id,
-            InventoryLedger.product_id == product_id,
-            InventoryLedger.change_amount == change_amount,
-            InventoryLedger.reference_type == reference_type,
-            InventoryLedger.created_at == created_at,
-        )
-    )
-    return existing is not None
+async def ensure_schema() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 
-async def get_demo_order(
-    session: AsyncSession,
-    *,
-    customer_id,
-    store_id,
-    product_id,
-    quantity: int,
-    total_amount: Decimal,
-) -> Order | None:
-    return await session.scalar(
-        select(Order)
-        .join(OrderItem, OrderItem.order_id == Order.id)
-        .where(
-            Order.customer_id == customer_id,
-            Order.store_id == store_id,
-            Order.total_amount == total_amount,
-            OrderItem.product_id == product_id,
-            OrderItem.quantity == quantity,
-        )
-        .limit(1),
-    )
-
-
-def make_ledger(
-    *,
-    store_id,
-    product_id,
-    change_amount: int,
-    reference_type: str,
-    created_at: datetime,
-) -> InventoryLedger:
-    ledger = InventoryLedger(
-        store_id=store_id,
-        product_id=product_id,
-        change_amount=change_amount,
-        reference_type=reference_type,
-    )
-    ledger.created_at = created_at
-    return ledger
-
-
-async def ensure_ledger(
-    session: AsyncSession,
-    *,
-    store_id,
-    product_id,
-    change_amount: int,
-    reference_type: str,
-    created_at: datetime,
-) -> None:
-    if await ledger_exists(
-        session,
-        store_id=store_id,
-        product_id=product_id,
-        change_amount=change_amount,
-        reference_type=reference_type,
-        created_at=created_at,
-    ):
-        return
-
-    session.add(
-        make_ledger(
-            store_id=store_id,
-            product_id=product_id,
-            change_amount=change_amount,
-            reference_type=reference_type,
-            created_at=created_at,
-        )
-    )
-
-
-async def ensure_store(
-    session: AsyncSession,
-    *,
-    name: str,
-    address: str,
-    phone: str,
-    store_type: StoreType,
-) -> Store:
-    store = await get_store(session, name)
-    if store:
-        return store
-
-    store = Store(
-        name=name,
-        address=address,
-        phone=phone,
-        store_type=store_type,
-    )
-    session.add(store)
-    await session.flush()
+async def get_or_create_store(session: AsyncSession, payload: dict[str, object]) -> Store:
+    store = await session.scalar(select(Store).where(Store.name == payload["name"]))
+    if store is None:
+        store = Store(**payload)
+        session.add(store)
+        await session.flush()
+    else:
+        store.address = payload["address"]  # type: ignore[index]
+        store.phone = payload["phone"]  # type: ignore[index]
+        store.store_type = payload["store_type"]  # type: ignore[index]
     return store
 
 
-async def ensure_customer(
+async def get_or_create_employee(
+    session: AsyncSession,
+    username: str,
+    role: EmployeeRole,
+    store: Store | None,
+) -> Employee:
+    employee = await session.scalar(select(Employee).where(Employee.username == username))
+    if employee is None:
+        employee = Employee(
+            username=username,
+            hashed_password=get_password_hash("Demo123!"),
+            role=role,
+            store_id=store.id if store else None,
+            is_active=True,
+        )
+        session.add(employee)
+        await session.flush()
+    else:
+        employee.hashed_password = get_password_hash("Demo123!")
+        employee.role = role
+        employee.store_id = store.id if store else None
+        employee.is_active = True
+    return employee
+
+
+async def get_or_create_product(session: AsyncSession, payload: dict[str, object]) -> Product:
+    product = await session.scalar(select(Product).where(Product.product_code == payload["product_code"]))
+    if product is None:
+        product = Product(**payload)
+        session.add(product)
+        await session.flush()
+    else:
+        for key, value in payload.items():
+            setattr(product, key, value)
+    return product
+
+
+async def get_or_create_customer(
     session: AsyncSession,
     *,
     name: str,
     phone: str,
     gender: str,
-    age: int,
-    hearing_loss_type: str,
+    birth_date_value: date,
+    address: str,
     primary_store_id,
+    age: int,
+    hearing_loss_type: str | None,
 ) -> Customer:
-    customer = await get_customer(session, name, phone)
-    if customer:
-        return customer
-
-    customer = Customer(
-        name=name,
-        phone=phone,
-        gender=gender,
-        age=age,
-        hearing_loss_type=hearing_loss_type,
-        primary_store_id=primary_store_id,
+    stmt = select(Customer).where(
+        Customer.name == name,
+        Customer.phone == phone,
+        Customer.gender == gender,
+        Customer.birth_date == birth_date_value,
     )
-    session.add(customer)
-    await session.flush()
+    customer = await session.scalar(stmt)
+    if customer is None:
+        customer = Customer(
+            name=name,
+            phone=phone,
+            gender=gender,
+            birth_date=birth_date_value,
+            address=address,
+            primary_store_id=primary_store_id,
+            age=age,
+            hearing_loss_type=hearing_loss_type,
+        )
+        session.add(customer)
+        await session.flush()
+    else:
+        customer.address = address
+        customer.primary_store_id = primary_store_id
+        customer.age = age
+        customer.hearing_loss_type = hearing_loss_type
     return customer
 
 
-async def ensure_product(
-    session: AsyncSession,
-    *,
-    name: str,
-    sku: str,
-    category: str,
-    cost_price: Decimal,
-    retail_price: Decimal,
-    brand: str,
-    manufacturer: str,
-    registration_no: str,
-    has_sn_tracking: bool,
-) -> Product:
-    product = await get_product(session, sku)
-    if product:
-        return product
-
-    product = Product(
-        name=name,
-        sku=sku,
-        category=category,
-        cost_price=cost_price,
-        retail_price=retail_price,
-        brand=brand,
-        manufacturer=manufacturer,
-        registration_no=registration_no,
-        has_sn_tracking=has_sn_tracking,
+async def ensure_inventory(session: AsyncSession, store_id, product_id, target_qty: int) -> Inventory:
+    inventory = await session.scalar(
+        select(Inventory).where(Inventory.store_id == store_id, Inventory.product_id == product_id)
     )
-    session.add(product)
-    await session.flush()
-    return product
-
-
-async def ensure_inventory(
-    session: AsyncSession,
-    *,
-    store_id,
-    product_id,
-    quantity: int,
-    last_updated: datetime,
-) -> Inventory:
-    inventory = await get_inventory(session, store_id, product_id)
-    if inventory:
-        if inventory.quantity < quantity:
-            inventory.quantity = quantity
-        inventory.last_updated = max(inventory.last_updated, last_updated)
-        return inventory
-
-    inventory = Inventory(
-        store_id=store_id,
-        product_id=product_id,
-        quantity=quantity,
-        last_updated=last_updated,
-    )
-    session.add(inventory)
-    await session.flush()
+    if inventory is None:
+        inventory = Inventory(store_id=store_id, product_id=product_id, quantity=target_qty)
+        session.add(inventory)
+        await session.flush()
+    else:
+        inventory.quantity = target_qty
     return inventory
 
 
-async def ensure_serial(
+async def ensure_inventory_summary(
     session: AsyncSession,
     *,
     store_id,
     product_id,
-    sn_code: str,
-    status: ProductSerialStatus,
-    created_at: datetime,
-    order_item_id=None,
-    warranty_ends_at=None,
-) -> ProductSerial:
-    serial = await get_serial(session, sn_code)
-    if serial:
-        return serial
-
-    serial = ProductSerial(
-        store_id=store_id,
-        product_id=product_id,
-        sn_code=sn_code,
-        status=status,
-        order_item_id=order_item_id,
-        warranty_ends_at=warranty_ends_at,
+    last_month_stock: int,
+    in_this_month: int,
+    out_this_month: int,
+    sales_this_month: int,
+    actual_stock: int,
+) -> InventorySummary:
+    summary = await session.scalar(
+        select(InventorySummary).where(
+            InventorySummary.store_id == store_id,
+            InventorySummary.product_id == product_id,
+            InventorySummary.month_year == MONTH_KEY,
+        )
     )
-    serial.created_at = created_at
-    session.add(serial)
-    await session.flush()
-    return serial
+    expected_stock = last_month_stock + in_this_month - out_this_month - sales_this_month
+    if summary is None:
+        summary = InventorySummary(
+            store_id=store_id,
+            product_id=product_id,
+            last_month_stock=last_month_stock,
+            in_this_month=in_this_month,
+            out_this_month=out_this_month,
+            sales_this_month=sales_this_month,
+            expected_stock=expected_stock,
+            actual_stock=actual_stock,
+            month_year=MONTH_KEY,
+        )
+        session.add(summary)
+        await session.flush()
+    else:
+        summary.last_month_stock = last_month_stock
+        summary.in_this_month = in_this_month
+        summary.out_this_month = out_this_month
+        summary.sales_this_month = sales_this_month
+        summary.expected_stock = expected_stock
+        summary.actual_stock = actual_stock
+    return summary
 
 
-async def ensure_demo_order(
-    session: AsyncSession,
-    *,
-    customer: Customer,
-    store: Store,
-    product: Product,
-    quantity: int,
-    unit_price: Decimal,
-    created_at: datetime,
-    serial_codes: list[str] | None = None,
-    serial_warranty_ends_at: datetime | None = None,
-) -> Order:
-    total_amount = unit_price * quantity
-    existing_order = await get_demo_order(
-        session,
-        customer_id=customer.id,
-        store_id=store.id,
-        product_id=product.id,
-        quantity=quantity,
-        total_amount=total_amount,
-    )
-    if existing_order:
-        return existing_order
-
-    order = Order(
-        customer_id=customer.id,
-        store_id=store.id,
-        total_amount=total_amount,
-        status=OrderStatus.PAID,
-    )
-    order.created_at = created_at
-    session.add(order)
+async def clear_demo_transactions(session: AsyncSession) -> None:
+    for model in (Appointment, FittingRecord, RepairRecord, OrderItem, Order, StockTransaction, InventoryLedger, InventorySummary):
+        rows = await session.scalars(select(model))
+        for row in rows:
+            await session.delete(row)
     await session.flush()
 
-    order_item = OrderItem(
-        order_id=order.id,
-        product_id=product.id,
-        quantity=quantity,
-        unit_price=unit_price,
-    )
-    session.add(order_item)
-    await session.flush()
 
-    if serial_codes:
-        for sn_code in serial_codes:
-            await ensure_serial(
+def customer_name(index: int) -> str:
+    return f"{FIRST_NAMES[index % len(FIRST_NAMES)]} {LAST_NAMES[(index * 3) % len(LAST_NAMES)]}"
+
+
+def customer_phone(index: int) -> str:
+    return f"04{12000000 + index:08d}"
+
+
+def customer_birth_date(index: int) -> date:
+    return date(1958 + (index % 40), (index % 12) + 1, ((index * 2) % 27) + 1)
+
+
+def customer_address(index: int) -> str:
+    suburbs = ["Sydney", "Melbourne", "Parramatta", "Adelaide", "Chatswood", "Burwood", "Glenelg", "Box Hill"]
+    return f"{20 + index} Demo Street, {suburbs[index % len(suburbs)]}"
+
+
+async def create_seed_data(session: AsyncSession) -> dict[str, int]:
+    stores: dict[str, Store] = {}
+    for payload in STORE_SEED:
+        store = await get_or_create_store(session, payload)
+        stores[store.name] = store
+
+    employees: dict[str, Employee] = {}
+    for payload in EMPLOYEE_SEED:
+        store = stores.get(payload["store_name"]) if payload["store_name"] else None
+        employee = await get_or_create_employee(session, payload["username"], payload["role"], store)
+        employees[employee.username] = employee
+
+    products: list[Product] = []
+    for payload in PRODUCT_SEED:
+        products.append(await get_or_create_product(session, payload))
+
+    customers: list[Customer] = []
+    store_list = list(stores.values())
+    for index in range(60):
+        store = store_list[index % len(store_list)]
+        birth = customer_birth_date(index)
+        customer = await get_or_create_customer(
+            session,
+            name=customer_name(index),
+            phone=customer_phone(index),
+            gender=GENDERS[index % len(GENDERS)],
+            birth_date_value=birth,
+            address=customer_address(index),
+            primary_store_id=store.id,
+            age=datetime.now(BUSINESS_TZ).year - birth.year,
+            hearing_loss_type=HEARING_LOSS_TYPES[index % len(HEARING_LOSS_TYPES)],
+        )
+        customers.append(customer)
+
+    await clear_demo_transactions(session)
+
+    inventory_rows = 0
+    ledger_rows = 0
+    stock_rows = 0
+    summary_rows = 0
+
+    for store_index, store in enumerate(store_list):
+        handler = next(
+            employee
+            for employee in employees.values()
+            if employee.store_id == store.id and employee.role in {EmployeeRole.STORE_MANAGER, EmployeeRole.STAFF}
+        )
+
+        for product_index, product in enumerate(products):
+            last_month_stock = 4 + ((store_index + product_index) % 6)
+            inbound_qty = 6 + ((store_index * 2 + product_index) % 10)
+            outbound_qty = (store_index + product_index) % 3
+            sales_qty = (store_index * 3 + product_index) % 5
+            actual_stock = max(last_month_stock + inbound_qty - outbound_qty - sales_qty, 0)
+
+            await ensure_inventory(session, store.id, product.id, actual_stock)
+            inventory_rows += 1
+
+            await ensure_inventory_summary(
                 session,
                 store_id=store.id,
                 product_id=product.id,
-                sn_code=sn_code,
-                status=ProductSerialStatus.SOLD,
-                created_at=created_at - timedelta(hours=4),
-                order_item_id=order_item.id,
-                warranty_ends_at=serial_warranty_ends_at,
+                last_month_stock=last_month_stock,
+                in_this_month=inbound_qty,
+                out_this_month=outbound_qty,
+                sales_this_month=sales_qty,
+                actual_stock=actual_stock,
             )
+            summary_rows += 1
 
-    await ensure_ledger(
-        session,
-        store_id=store.id,
-        product_id=product.id,
-        change_amount=-quantity,
-        reference_type="sales_out",
-        created_at=created_at,
-    )
-    return order
-
-
-async def seed_data() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    stock_in_signia_time = days_ago(3, 9, 15)
-    order_one_time = days_ago(2, 11, 10)
-    stock_in_phonak_time = days_ago(3, 10, 0)
-    order_two_time = days_ago(1, 14, 20)
-    stock_in_battery_sydney_time = days_ago(3, 8, 45)
-    stock_in_battery_melbourne_time = days_ago(2, 9, 30)
-    order_three_time = days_ago(0, 16, 5)
-
-    async with AsyncSessionLocal() as session:
-        async with session.begin():
-            sydney_store = await ensure_store(
-                session,
-                name="Sydney Flagship Store",
-                address="123 George Street, Sydney NSW",
-                phone="02 9000 1000",
-                store_type=StoreType.STREET,
-            )
-            melbourne_store = await ensure_store(
-                session,
-                name="Melbourne Branch",
-                address="88 Collins Street, Melbourne VIC",
-                phone="03 9000 2000",
-                store_type=StoreType.STREET,
-            )
-
-            john_doe = await ensure_customer(
-                session,
-                name="John Doe",
-                phone="0412345678",
-                gender="Male",
-                age=62,
-                hearing_loss_type="Moderate",
-                primary_store_id=sydney_store.id,
-            )
-            alice_smith = await ensure_customer(
-                session,
-                name="Alice Smith",
-                phone="0487654321",
-                gender="Female",
-                age=54,
-                hearing_loss_type="Mild",
-                primary_store_id=melbourne_store.id,
-            )
-
-            signia_pure = await ensure_product(
-                session,
-                name="Signia Pure 312 X",
-                sku="SIG-312-X",
-                category="Hearing Aid",
-                cost_price=Decimal("4200.00"),
-                retail_price=Decimal("6500.00"),
-                brand="Signia",
-                manufacturer="WS Audiology",
-                registration_no="ARTG-SIG-312X",
-                has_sn_tracking=True,
-            )
-            phonak_lumity = await ensure_product(
-                session,
-                name="Phonak Audéo Lumity",
-                sku="PHO-LUM-01",
-                category="Hearing Aid",
-                cost_price=Decimal("4700.00"),
-                retail_price=Decimal("7200.00"),
-                brand="Phonak",
-                manufacturer="Sonova",
-                registration_no="ARTG-PHO-LUM01",
-                has_sn_tracking=True,
-            )
-            battery_pack = await ensure_product(
-                session,
-                name="Standard Battery 6-pack",
-                sku="BAT-006",
-                category="Accessory",
-                cost_price=Decimal("6.00"),
-                retail_price=Decimal("15.00"),
-                brand="Generic",
-                manufacturer="Hearing Supply Co.",
-                registration_no="ACC-BAT-006",
-                has_sn_tracking=False,
-            )
-
-            await ensure_inventory(
-                session,
-                store_id=sydney_store.id,
-                product_id=signia_pure.id,
-                quantity=2,
-                last_updated=stock_in_signia_time,
-            )
-            await ensure_inventory(
-                session,
-                store_id=sydney_store.id,
-                product_id=battery_pack.id,
-                quantity=50,
-                last_updated=stock_in_battery_sydney_time,
-            )
-            await ensure_inventory(
-                session,
-                store_id=melbourne_store.id,
-                product_id=phonak_lumity.id,
-                quantity=1,
-                last_updated=stock_in_phonak_time,
-            )
-            await ensure_inventory(
-                session,
-                store_id=melbourne_store.id,
-                product_id=battery_pack.id,
-                quantity=18,
-                last_updated=stock_in_battery_melbourne_time,
-            )
-
-            for sn_code in ["SN-SIG-0001", "SN-SIG-0002"]:
-                await ensure_serial(
-                    session,
-                    store_id=sydney_store.id,
-                    product_id=signia_pure.id,
-                    sn_code=sn_code,
-                    status=ProductSerialStatus.IN_STOCK,
-                    created_at=stock_in_signia_time,
+            inbound_date = dt_in_tz(-25 + (product_index % 8), 10 + (store_index % 3))
+            inbound_dt = inbound_date.astimezone(UTC)
+            session.add(
+                StockTransaction(
+                    transaction_date=inbound_dt,
+                    store_id=store.id,
+                    product_id=product.id,
+                    customer_id=None,
+                    type=TransactionType.INBOUND,
+                    quantity=inbound_qty,
+                    unit_price=product.cost_price,
+                    handled_by=handler.id,
+                    target="Head Office Purchasing",
+                    remark=f"{brand_display(product.brand.name)} {category_display(product.category.name)} 补货入库",
                 )
+            )
+            session.add(
+                InventoryLedger(
+                    store_id=store.id,
+                    product_id=product.id,
+                    change_amount=inbound_qty,
+                    reference_type="stock_in",
+                )
+            )
+            stock_rows += 1
+            ledger_rows += 1
 
-            await ensure_serial(
-                session,
-                store_id=melbourne_store.id,
-                product_id=phonak_lumity.id,
-                sn_code="SN-PHO-0002",
-                status=ProductSerialStatus.IN_STOCK,
-                created_at=stock_in_phonak_time,
-            )
+            if outbound_qty > 0:
+                outbound_date = dt_in_tz(-12 + (product_index % 6), 15)
+                session.add(
+                    StockTransaction(
+                        transaction_date=outbound_date.astimezone(UTC),
+                        store_id=store.id,
+                        product_id=product.id,
+                        customer_id=None,
+                        type=TransactionType.OUTBOUND,
+                        quantity=outbound_qty,
+                        unit_price=product.cost_price,
+                        handled_by=handler.id,
+                        target="Display / External Usage",
+                        remark=f"{product.name_cn} 调拨或展示出库",
+                    )
+                )
+                session.add(
+                    InventoryLedger(
+                        store_id=store.id,
+                        product_id=product.id,
+                        change_amount=-outbound_qty,
+                        reference_type="transfer",
+                    )
+                )
+                stock_rows += 1
+                ledger_rows += 1
 
-            await ensure_ledger(
-                session,
-                store_id=sydney_store.id,
-                product_id=signia_pure.id,
-                change_amount=3,
-                reference_type="manual_in",
-                created_at=stock_in_signia_time,
-            )
-            await ensure_ledger(
-                session,
-                store_id=melbourne_store.id,
-                product_id=phonak_lumity.id,
-                change_amount=2,
-                reference_type="manual_in",
-                created_at=stock_in_phonak_time,
-            )
-            await ensure_ledger(
-                session,
-                store_id=sydney_store.id,
-                product_id=battery_pack.id,
-                change_amount=50,
-                reference_type="manual_in",
-                created_at=stock_in_battery_sydney_time,
-            )
-            await ensure_ledger(
-                session,
-                store_id=melbourne_store.id,
-                product_id=battery_pack.id,
-                change_amount=20,
-                reference_type="manual_in",
-                created_at=stock_in_battery_melbourne_time,
-            )
+    orders_created = 0
+    order_items_created = 0
+    repairs_created = 0
+    fittings_created = 0
+    appointments_created = 0
 
-            await ensure_demo_order(
-                session,
-                customer=john_doe,
-                store=sydney_store,
-                product=signia_pure,
-                quantity=1,
-                unit_price=signia_pure.retail_price,
-                created_at=order_one_time,
-                serial_codes=["SN-SIG-0003"],
-                serial_warranty_ends_at=order_one_time + timedelta(days=365 * 2),
-            )
-            await ensure_demo_order(
-                session,
-                customer=alice_smith,
-                store=melbourne_store,
-                product=phonak_lumity,
-                quantity=1,
-                unit_price=phonak_lumity.retail_price,
-                created_at=order_two_time,
-                serial_codes=["SN-PHO-0001"],
-                serial_warranty_ends_at=order_two_time + timedelta(days=365 * 2),
-            )
-            await ensure_demo_order(
-                session,
-                customer=john_doe,
-                store=melbourne_store,
-                product=battery_pack,
-                quantity=2,
-                unit_price=battery_pack.retail_price,
-                created_at=order_three_time,
-            )
+    machine_products = [
+        product
+        for product in products
+        if product.category
+        in {
+            CategoryEnum.BTE,
+            CategoryEnum.RIC,
+            CategoryEnum.ITC,
+            CategoryEnum.ITE,
+            CategoryEnum.IIC,
+            CategoryEnum.CIC,
+            CategoryEnum.IIC_CIC,
+            CategoryEnum.STANDARD_MACHINE,
+            CategoryEnum.BEHIND_EAR_MACHINE,
+            CategoryEnum.CUSTOM_MACHINE,
+        }
+    ]
+    accessory_products = [product for product in products if product not in machine_products]
 
-        print("Seed completed successfully.")
-        print(f"Stores ready: {sydney_store.name}, {melbourne_store.name}")
-        print(f"Customers ready: {john_doe.name}, {alice_smith.name}")
-        print(
-            "Products ready: "
-            f"{signia_pure.sku}, {phonak_lumity.sku}, {battery_pack.sku}"
+    for index in range(36):
+        customer = customers[index]
+        store = stores[next(name for name, value in stores.items() if value.id == customer.primary_store_id)]
+        handler = next(employee for employee in employees.values() if employee.store_id == store.id)
+        machine = machine_products[index % len(machine_products)]
+        accessory = accessory_products[index % len(accessory_products)]
+        order_time = dt_in_tz(-(index % 7), 9 + (index % 8), 15).astimezone(UTC)
+
+        order = Order(
+            customer_id=customer.id,
+            store_id=store.id,
+            total_amount=Decimal("0.00"),
+            status=OrderStatus.PAID,
+            created_at=order_time.replace(tzinfo=None),
         )
-        print("Recent demo orders have been inserted for dashboard analytics.")
+        session.add(order)
+        await session.flush()
+
+        items: list[tuple[Product, int, Decimal]] = [
+            (machine, 1, machine.original_price),
+        ]
+        if index % 2 == 0:
+            items.append((accessory, 1 + (index % 2), accessory.original_price))
+
+        total_amount = Decimal("0.00")
+        for product, quantity, unit_price in items:
+            session.add(
+                OrderItem(
+                    order_id=order.id,
+                    product_id=product.id,
+                    quantity=quantity,
+                    unit_price=unit_price,
+                )
+            )
+            line_total = unit_price * quantity
+            total_amount += line_total
+            order_items_created += 1
+
+            inventory = await session.scalar(
+                select(Inventory).where(Inventory.store_id == store.id, Inventory.product_id == product.id)
+            )
+            if inventory is not None:
+                inventory.quantity = max(inventory.quantity - quantity, 0)
+
+            session.add(
+                StockTransaction(
+                    transaction_date=order_time,
+                    store_id=store.id,
+                    product_id=product.id,
+                    customer_id=customer.id,
+                    type=TransactionType.SALE,
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    handled_by=handler.id,
+                    target=customer.name,
+                    remark=f"{product.name_cn} 销售登记",
+                )
+            )
+            session.add(
+                InventoryLedger(
+                    store_id=store.id,
+                    product_id=product.id,
+                    change_amount=-quantity,
+                    reference_type="sale",
+                )
+            )
+            stock_rows += 1
+            ledger_rows += 1
+
+        order.total_amount = total_amount
+        orders_created += 1
+
+    for index, customer in enumerate(customers[:24]):
+        store = stores[next(name for name, value in stores.items() if value.id == customer.primary_store_id)]
+        handler = next(employee for employee in employees.values() if employee.store_id == store.id)
+        product = machine_products[index % len(machine_products)]
+        receive_date = datetime.now(BUSINESS_TZ).date() - timedelta(days=12 - (index % 6))
+        due_date = datetime.now(BUSINESS_TZ).date() + timedelta(days=(index % 9) - 3)
+        status = [RepairStatus.PENDING, RepairStatus.FACTORY, RepairStatus.DELIVERED][index % 3]
+
+        session.add(
+            RepairRecord(
+                customer_id=customer.id,
+                store_id=store.id,
+                machine_model=product.name_cn,
+                receive_date=receive_date,
+                due_date=due_date,
+                issue_description=f"{product.name_cn} 需要调试、清洁和性能复检",
+                status=status,
+                handled_by=handler.id,
+            )
+        )
+        repairs_created += 1
+
+    for index, customer in enumerate(customers[:30]):
+        store = stores[next(name for name, value in stores.items() if value.id == customer.primary_store_id)]
+        creator = next(employee for employee in employees.values() if employee.store_id == store.id)
+        product = machine_products[(index * 2) % len(machine_products)]
+
+        session.add(
+            FittingRecord(
+                customer_id=customer.id,
+                store_id=store.id,
+                product_id=product.id,
+                fitting_date=datetime.now(BUSINESS_TZ).date() - timedelta(days=index % 20),
+                device_name=product.name_cn,
+                fitting_notes=f"完成 {category_display(product.category.name)} 初次验配与增益微调",
+                result_summary=["适应良好", "需要继续跟进", "佩戴舒适，建议一周复查"][index % 3],
+                created_by=creator.id,
+            )
+        )
+        fittings_created += 1
+
+    for index, customer in enumerate(customers[:28]):
+        store = stores[next(name for name, value in stores.items() if value.id == customer.primary_store_id)]
+        employee = next(employee for employee in employees.values() if employee.store_id == store.id)
+        appointment_time = dt_in_tz((index % 14) - 6, 9 + (index % 6), 30)
+        if index % 5 == 0:
+            appointment_status = AppointmentStatus.COMPLETED
+        elif index % 7 == 0:
+            appointment_status = AppointmentStatus.CANCELLED
+        else:
+            appointment_status = AppointmentStatus.PENDING
+
+        session.add(
+            Appointment(
+                store_id=store.id,
+                customer_id=customer.id,
+                employee_id=employee.id,
+                appointment_time=appointment_time.astimezone(UTC).replace(tzinfo=None),
+                type=APPOINTMENT_TYPES[index % len(APPOINTMENT_TYPES)],
+                status=appointment_status,
+                notes="Demo seed appointment for UI testing",
+            )
+        )
+        appointments_created += 1
+
+    await session.flush()
+
+    return {
+        "stores": len(stores),
+        "employees": len(employees),
+        "customers": len(customers),
+        "products": len(products),
+        "inventories": inventory_rows,
+        "inventory_summaries": summary_rows,
+        "stock_transactions": stock_rows,
+        "inventory_ledger": ledger_rows,
+        "orders": orders_created,
+        "order_items": order_items_created,
+        "repairs": repairs_created,
+        "fittings": fittings_created,
+        "appointments": appointments_created,
+    }
 
 
-async def reset_business_data() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def print_current_counts(session: AsyncSession) -> None:
+    tables: Iterable[tuple[str, type]] = (
+        ("stores", Store),
+        ("employees", Employee),
+        ("customers", Customer),
+        ("products", Product),
+        ("inventories", Inventory),
+        ("inventory_summaries", InventorySummary),
+        ("stock_transactions", StockTransaction),
+        ("orders", Order),
+        ("order_items", OrderItem),
+        ("repairs", RepairRecord),
+        ("fittings", FittingRecord),
+        ("appointments", Appointment),
+    )
+    print("\nCurrent totals:")
+    for label, model in tables:
+        total = await session.scalar(select(func.count()).select_from(model))
+        print(f"  {label}: {total}")
 
+
+async def main() -> None:
+    await ensure_schema()
     async with AsyncSessionLocal() as session:
         async with session.begin():
-            await session.execute(delete(Appointment))
-            await session.execute(delete(Audiogram))
-            await session.execute(delete(ProductSerial))
-            await session.execute(delete(Transfer))
-            await session.execute(delete(InventoryLedger))
-            await session.execute(delete(OrderItem))
-            await session.execute(delete(Order))
-            await session.execute(delete(Inventory))
-            await session.execute(delete(Customer))
-            await session.execute(delete(Product))
-            await session.execute(delete(User))
-            await session.execute(update(Employee).values(store_id=None))
-            await session.execute(delete(Employee).where(Employee.role != EmployeeRole.ADMIN))
-            await session.execute(delete(Store))
+            summary = await create_seed_data(session)
 
-    print("Existing business data cleared. Admin accounts were preserved.")
-
-
-async def main(reset: bool) -> None:
-    try:
-        if reset:
-            await reset_business_data()
-        await seed_data()
-    finally:
-        await engine.dispose()
+        print("Seed complete.\n")
+        print("Added / refreshed demo data:")
+        for key, value in summary.items():
+            print(f"  {key}: {value}")
+        print("\nDemo employee password: Demo123!")
+        await print_current_counts(session)
+    await engine.dispose()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Seed the ERP database with English demo data.")
-    parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="Delete existing business data before seeding the demo dataset.",
-    )
-    args = parser.parse_args()
-    asyncio.run(main(reset=args.reset))
+    asyncio.run(main())

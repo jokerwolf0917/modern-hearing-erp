@@ -21,6 +21,11 @@ function isValidationErrorArray(value: unknown): value is ApiValidationErrorItem
   return Array.isArray(value);
 }
 
+function shouldSkipGlobalError(error: AxiosError<ApiErrorResponse>): boolean {
+  const headers = error.config?.headers as Record<string, unknown> | undefined;
+  return headers?.['X-Skip-Global-Error'] === 'true';
+}
+
 export function normalizeApiErrorMessage(payload: ApiErrorResponse | undefined, fallback: string): string {
   const detail = payload?.detail;
 
@@ -70,7 +75,7 @@ request.interceptors.response.use(
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
-    } else {
+    } else if (!shouldSkipGlobalError(error)) {
       message.error(normalizeApiErrorMessage(error.response?.data, '请求失败，请稍后重试。'));
     }
 

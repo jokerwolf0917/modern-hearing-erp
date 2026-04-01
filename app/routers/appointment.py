@@ -58,6 +58,7 @@ def _serialize_appointment(
 async def list_appointments(
     start_time: datetime | None = Query(default=None),
     end_time: datetime | None = Query(default=None),
+    store_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_active_user),
 ) -> list[AppointmentResponse]:
@@ -78,11 +79,19 @@ async def list_appointments(
         if normalized_end_time is not None:
             stmt = stmt.where(Appointment.appointment_time <= normalized_end_time)
 
-        if current_user.role != EmployeeRole.ADMIN:
+        if current_user.role == EmployeeRole.ADMIN:
+            if store_id is not None:
+                stmt = stmt.where(Appointment.store_id == store_id)
+        else:
             if current_user.store_id is None:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Current user is not assigned to a store",
+                )
+            if store_id is not None and store_id != current_user.store_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only view appointments for your own store.",
                 )
             stmt = stmt.where(Appointment.store_id == current_user.store_id)
 

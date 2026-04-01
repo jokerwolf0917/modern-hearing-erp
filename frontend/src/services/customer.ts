@@ -1,12 +1,14 @@
-﻿import { request } from '../utils/request';
+import { request } from '../utils/request';
 
 export interface ICustomer {
   id: string;
   name: string;
   phone: string;
-  age: number | null;
   gender: string | null;
-  hearing_loss_type: string | null;
+  birth_date: string | null;
+  address: string | null;
+  primary_store_id: string | null;
+  primary_store_name: string | null;
   created_at: string;
 }
 
@@ -20,9 +22,10 @@ export interface ICustomerListResponse {
 export interface CreateCustomerPayload {
   name: string;
   phone: string;
-  age: number;
-  gender: '男' | '女' | '未知';
-  hearing_loss_type: '正常' | '轻度' | '中度' | '重度' | '极重度';
+  gender?: string | null;
+  birth_date?: string | null;
+  address?: string | null;
+  primary_store_id?: string | null;
 }
 
 export interface ImportResult {
@@ -30,7 +33,12 @@ export interface ImportResult {
   skipped_count: number;
 }
 
-export async function getCustomers(params: { q?: string; page?: number; page_size?: number }): Promise<ICustomerListResponse> {
+export async function getCustomers(params: {
+  q?: string;
+  page?: number;
+  page_size?: number;
+  store_id?: string;
+}): Promise<ICustomerListResponse> {
   const response = await request.get<ICustomerListResponse>('/api/customers', { params });
   return response.data;
 }

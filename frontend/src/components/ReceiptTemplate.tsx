@@ -3,6 +3,7 @@ import { Card, Descriptions } from 'antd';
 import { forwardRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useAppSettings } from '../contexts/AppSettingsContext';
 import type { IOrderListItem } from '../services/order';
 
 interface ReceiptTemplateProps {
@@ -30,22 +31,30 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
   { order },
   ref,
 ) {
+  const { settings } = useAppSettings();
   const { i18n } = useTranslation();
-  const isZh = i18n.language.startsWith('zh');
-  const locale = isZh ? 'zh-CN' : 'en-AU';
+  const resolvedLanguage =
+    settings.print.receiptLanguage === 'follow'
+      ? (i18n.language.startsWith('zh') ? 'zh' : 'en')
+      : settings.print.receiptLanguage;
+
+  const locale = resolvedLanguage === 'zh' ? 'zh-CN' : 'en-AU';
   const printedAt = formatDateTime(new Date().toISOString(), locale);
+  const isZh = resolvedLanguage === 'zh';
 
   const copy = {
-    brand: isZh ? '听力 ERP 多门店系统' : 'Hearing ERP Multi-store System',
+    brand: isZh ? 'HearFlow 听流门店系统' : 'HearFlow Store System',
     title: isZh ? '销售凭证' : 'Sales Receipt',
-    hint: isZh ? '医疗器械销售记录，请妥善保管。' : 'Medical-device sales record. Please keep this document safely.',
+    hint: isZh
+      ? '医疗器械销售记录，请妥善保管。'
+      : 'Medical device sales record. Please keep this receipt safely.',
     orderNo: isZh ? '订单号' : 'Order No.',
     printedAt: isZh ? '打印时间' : 'Printed At',
     customer: isZh ? '客户姓名' : 'Customer',
     store: isZh ? '开单门店' : 'Store',
-    time: isZh ? '接待时间' : 'Issued At',
+    time: isZh ? '下单时间' : 'Order Time',
     status: isZh ? '订单状态' : 'Status',
-    paid: isZh ? '已完成' : 'Completed',
+    paid: isZh ? '已完成' : 'Paid',
     returned: isZh ? '已退货' : 'Returned',
     cancelled: isZh ? '已取消' : 'Cancelled',
     product: isZh ? '商品名称' : 'Product',
@@ -55,22 +64,18 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
     warrantyUntil: isZh ? '保修至' : 'Warranty Until',
     total: isZh ? '总金额' : 'Total',
     signature: isZh ? '客户签名' : 'Customer Signature',
-    stamp: isZh ? '诊所盖章' : 'Clinic Stamp',
-    disclaimerTitle: isZh ? '免责声明 / 温馨提示' : 'Notice',
+    stamp: isZh ? '门店盖章' : 'Store Stamp',
+    disclaimerTitle: isZh ? '提示说明' : 'Notice',
     disclaimerLine1: isZh
       ? '感谢您的信任，请妥善保管此凭证作为保修依据。'
-      : 'Thank you for your trust. Please keep this receipt as proof for warranty service.',
+      : 'Thank you for your trust. Please keep this receipt as warranty proof.',
     disclaimerLine2: isZh
-      ? '高值医疗器械商品的序列号与保修期信息已随本凭证一并记录。'
-      : 'Serial-number and warranty information for high-value medical devices is recorded on this receipt.',
+      ? '本凭证用于门店销售与售后记录核对。'
+      : 'This receipt is used for store sales and after-sales record verification.',
   };
 
   const statusLabel =
-    order?.status === 'returned'
-      ? copy.returned
-      : order?.status === 'cancelled'
-        ? copy.cancelled
-        : copy.paid;
+    order?.status === 'RETURNED' ? copy.returned : order?.status === 'CANCELLED' ? copy.cancelled : copy.paid;
 
   return (
     <div
@@ -104,15 +109,6 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
             .receipt-card {
               box-shadow: none !important;
               border: 1px solid #e5e7eb !important;
-            }
-
-            .receipt-table {
-              page-break-inside: auto;
-            }
-
-            .receipt-table tr {
-              page-break-inside: avoid;
-              page-break-after: auto;
             }
           }
         `}
@@ -225,12 +221,16 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
               <td style={{ padding: '12px', borderBottom: '1px solid #e5e7eb' }}>
                 <div style={{ fontWeight: 600 }}>{item.product_name}</div>
                 <div style={{ marginTop: 4, fontSize: 12, color: '#94a3b8' }}>SKU: {item.sku}</div>
-                {item.serial_details.map((serial) => (
-                  <div key={serial.sn_code} style={{ marginTop: 4, fontSize: 11, color: '#6b7280' }}>
-                    SN: {serial.sn_code}
-                    {serial.warranty_ends_at ? ` | ${copy.warrantyUntil}: ${formatDate(serial.warranty_ends_at, locale)}` : ''}
-                  </div>
-                ))}
+                {settings.print.showWarrantyInfo
+                  ? item.serial_details.map((serial) => (
+                      <div key={serial.sn_code} style={{ marginTop: 4, fontSize: 11, color: '#6b7280' }}>
+                        SN: {serial.sn_code}
+                        {serial.warranty_ends_at
+                          ? ` | ${copy.warrantyUntil}: ${formatDate(serial.warranty_ends_at, locale)}`
+                          : ''}
+                      </div>
+                    ))
+                  : null}
               </td>
               <td style={{ padding: '12px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>
                 {formatCurrency(item.unit_price, locale)}
@@ -270,7 +270,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: 28,
-          marginBottom: 30,
+          marginBottom: settings.print.showDisclaimer ? 30 : 0,
         }}
       >
         <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 10, minHeight: 54 }}>
@@ -281,19 +281,21 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
         </div>
       </div>
 
-      <div
-        style={{
-          borderTop: '1px dashed #94a3b8',
-          paddingTop: 14,
-          fontSize: 12,
-          lineHeight: 1.8,
-          color: '#475569',
-        }}
-      >
-        <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>{copy.disclaimerTitle}</div>
-        <div>{copy.disclaimerLine1}</div>
-        <div>{copy.disclaimerLine2}</div>
-      </div>
+      {settings.print.showDisclaimer ? (
+        <div
+          style={{
+            borderTop: '1px dashed #94a3b8',
+            paddingTop: 14,
+            fontSize: 12,
+            lineHeight: 1.8,
+            color: '#475569',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>{copy.disclaimerTitle}</div>
+          <div>{copy.disclaimerLine1}</div>
+          <div>{copy.disclaimerLine2}</div>
+        </div>
+      ) : null}
     </div>
   );
 });

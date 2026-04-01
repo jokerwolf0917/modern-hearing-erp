@@ -1,6 +1,6 @@
 import { request } from '../utils/request';
 
-export type EmployeeRole = 'admin' | 'store_manager' | 'staff';
+export type EmployeeRole = 'ADMIN' | 'STORE_MANAGER' | 'STAFF';
 
 export interface IEmployeeRecord {
   id: string;

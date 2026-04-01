@@ -1,4 +1,4 @@
-# 🦻 Modern Hearing ERP
+# HearFlow
 
 [![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%2B%20TypeScript-61dafb?style=for-the-badge&logo=react&logoColor=061a23)](https://react.dev/)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%2B%20SQLAlchemy-05998b?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -9,59 +9,76 @@
 
 ## Overview
 
-**Modern Hearing ERP** is a full-stack **B2B SaaS ERP & POS system** built for offline hearing-aid retail chains and second-class medical-device operations.
+**HearFlow** is a full-stack ERP and POS system for offline hearing-aid stores and small multi-store retail operations.
 
-It is designed to replace legacy desktop software with a modern, bilingual, concurrency-aware web platform that combines:
+It focuses on the workflows that matter in day-to-day store operations:
 
-- real-world retail workflows,
-- strict medical-device traceability,
-- clean SaaS-grade UI,
-- and transaction-safe backend logic.
+- customer and service management
+- appointment scheduling
+- repair tracking
+- POS checkout
+- inventory movement and stock overview
+- product, store, and employee administration
+- bilingual Chinese / English experience
 
-The project focuses on the operational realities of hearing-aid businesses: multi-store inventory, serial-number lifecycle tracking, POS checkout, CRM scheduling, audiogram records, and AI-powered intake.
+The project is designed as a modern replacement for legacy desktop tools, with a cleaner UI, stronger data rules, and a deployable Docker setup.
 
 ## Core Features
 
-### ⚡ Concurrency-Safe POS
+### Customer 360
 
-The sales flow is built with **transactional stock deduction** and **pessimistic locking** (`with_for_update`) to prevent overselling under concurrent checkout scenarios across multiple stores.
+- Customer profiles with duplicate-prevention rules
+- Unified customer drawer with profile, purchase history, repairs, and fitting records
+- Manual backfill support for stores migrating from offline spreadsheets
 
-- Inventory rows are locked before quantity deduction.
-- SN-tracked items lock specific serial records instead of only aggregate quantity.
-- Sales, returns, and stock rollback are all handled inside atomic database transactions.
+### Repairs and Service
 
-### 🔎 Item-Level SN Tracking
+- Dedicated repair dashboard with fuzzy search
+- Due-date-first ordering for faster staff follow-up
+- Manual repair creation and export/import workflow
+- Visual status highlighting for overdue and upcoming jobs
 
-This system supports **item-level serial number tracking** for regulated medical devices.
+### POS and Inventory
 
-- Every high-value hearing aid can be tracked by unique SN.
-- Stock-in, sales, return, and warranty state are tied to the actual physical unit.
-- A global SN trace page reconstructs store ownership, order linkage, customer relationship, and warranty validity.
+- Sales POS with cart workflow and customer binding
+- Inventory center for stock lookup, stock-in, and transfer operations
+- Product and inventory structures aligned with real retail spreadsheet fields
+- Store-scoped and all-store views for admins
 
-### 🤖 Multimodal AI Intake
+### Multi-store Operations
 
-The project integrates **Vision AI** to parse paper audiograms and hearing records into structured data.
+- Store-level filtering across key modules
+- Admin can switch between all stores and a single store
+- Staff and store managers stay scoped to their assigned store
 
-- Image upload + AI extraction pipeline
-- Structured JSON output for audiogram thresholds
-- Human-in-the-loop review before persistence
-- A solid base for future MLOps-style clinical workflows
+### Management and Onboarding
 
-### 🏢 Multi-tenant RBAC
+- Product, store, and employee management
+- Built-in help center for first-time users
+- Settings center for language, default store, and interface preferences
 
-The platform enforces **role-based access control** and **store-level data isolation**.
+### Bilingual UI
 
-- `ADMIN` users can access cross-store operational data.
-- `STORE_MANAGER` and staff accounts are automatically scoped to their own store.
-- Sensitive inventory, order, and appointment queries are filtered server-side, not just hidden in the UI.
+- Runtime Chinese / English language switch
+- Ant Design locale integration
+- UI shell translated while business data remains intact
 
-### 🌍 Modern i18n UI
+## Modules
 
-The frontend provides a frictionless **Chinese / English bilingual interface** powered by `react-i18next`.
+The current application includes:
 
-- Seamless runtime language switch
-- Business-facing dashboards and CRUD screens translated for open-source showcase
-- Clean SaaS-style interface built with React 18 + Ant Design v5
+- Dashboard
+- Customers
+- Repairs
+- Calendar
+- Sales POS
+- Orders
+- Inventory Center
+- Products
+- Stores
+- Employees
+- Settings
+- Help Center
 
 ## Tech Stack
 
@@ -74,15 +91,14 @@ The frontend provides a frictionless **Chinese / English bilingual interface** p
 - TanStack React Query
 - Axios
 - react-i18next
-- Recharts
 
 ### Backend
 
 - FastAPI
 - Python
-- SQLAlchemy (async)
-- JWT Authentication
+- SQLAlchemy
 - Pydantic
+- JWT authentication
 
 ### Database
 
@@ -97,13 +113,13 @@ The frontend provides a frictionless **Chinese / English bilingual interface** p
 
 ## Quick Start
 
-### 1. Start everything with Docker
+### 1. Build and start the stack
 
 ```bash
 docker compose up -d --build
 ```
 
-### 2. Load the demo seed dataset
+### 2. Seed demo data
 
 ```bash
 docker compose exec backend python seed.py --reset
@@ -112,46 +128,46 @@ docker compose exec backend python seed.py --reset
 ### 3. Open the services
 
 - Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Backend docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 - PostgreSQL: `localhost:5432`
 
-## What You Can Demo
+## Demo Accounts
 
-- Create and manage customers, products, stores, employees, and appointments
-- Run multi-store stock-in and transfer workflows
-- Perform POS checkout with transaction-safe stock deduction
-- Print order receipts
-- Track medical devices by serial number and warranty lifecycle
-- Explore dashboard analytics with seeded revenue trends
-- Switch the UI between English and Chinese instantly
+Default demo credentials after seeding:
 
-## Project Structure
+- `admin / Demo123!`
+
+## Docker Files
+
+- Backend image: [Dockerfile](./Dockerfile)
+- Frontend image: [frontend/Dockerfile](./frontend/Dockerfile)
+- Compose stack: [docker-compose.yml](./docker-compose.yml)
+
+## Repository Structure
 
 ```text
 .
-├── app/                  # FastAPI backend
-├── frontend/             # React + TypeScript frontend
-├── Dockerfile            # Backend container image
-├── docker-compose.yml    # Full-stack orchestration
-└── seed.py               # Open-source demo seed script
+|- app/                FastAPI backend
+|- frontend/           React + TypeScript frontend
+|- Dockerfile          Backend container image
+|- docker-compose.yml  Full-stack orchestration
+`- seed.py             Demo seed script
 ```
+
+## Notes
+
+- The frontend is optimized for a modern desktop ERP workflow.
+- Demo data is intentionally seeded to make dashboards and operational pages easier to review.
+- The system supports both Chinese and English UI modes.
 
 ## Disclaimer
 
-> For open-source compliance, **all real patient/customer data and production API secrets have been strictly removed**.
->
-> This repository contains **seeded dummy data only** for demonstration purposes.
+For open-source compliance:
 
-## Why This Project Matters
+- real customer and patient data has been removed
+- production secrets are not included
+- the repository is intended to run with seeded demo data only
 
-This is not a toy CRUD demo.
+## License
 
-It is a domain-specific ERP/POS system that demonstrates how to combine:
-
-- business-critical transaction safety,
-- regulated-device traceability,
-- role-based SaaS architecture,
-- multimodal AI workflows,
-- and production-friendly Docker delivery
-
-inside a compact but realistic full-stack product.
+This repository is currently provided for portfolio and demonstration use unless a separate license is added.
