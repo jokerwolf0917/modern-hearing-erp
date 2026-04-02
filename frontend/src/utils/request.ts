@@ -26,6 +26,22 @@ function shouldSkipGlobalError(error: AxiosError<ApiErrorResponse>): boolean {
   return headers?.['X-Skip-Global-Error'] === 'true';
 }
 
+function getApiBaseUrl(): string {
+  const envBaseUrl = (
+    import.meta as ImportMeta & { env?: Record<string, string | undefined> }
+  ).env?.VITE_API_BASE_URL?.trim();
+  if (envBaseUrl) {
+    return envBaseUrl;
+  }
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:8000`;
+  }
+
+  return 'http://127.0.0.1:8000';
+}
+
 export function normalizeApiErrorMessage(payload: ApiErrorResponse | undefined, fallback: string): string {
   const detail = payload?.detail;
 
@@ -48,7 +64,7 @@ export function normalizeApiErrorMessage(payload: ApiErrorResponse | undefined, 
 }
 
 export const request = axios.create({
-  baseURL: 'http://127.0.0.1:8000',
+  baseURL: getApiBaseUrl(),
   timeout: 60_000,
 });
 
