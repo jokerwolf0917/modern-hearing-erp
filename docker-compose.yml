@@ -26,7 +26,7 @@ services:
       APP_ENV: development
       JWT_SECRET_KEY: change-me-in-production
       ACCESS_TOKEN_EXPIRE_MINUTES: 480
-      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://43.161.225.108:3000
     depends_on:
       db:
         condition: service_healthy
